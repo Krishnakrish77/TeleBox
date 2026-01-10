@@ -41,23 +41,31 @@ client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
 def ensure_login():
     """
-    Login safely using Telethon sync API.
+    Ensure Telegram login WITHOUT stdin.
+    Kodi-safe implementation.
     """
     if not client.is_connected():
         client.connect()
 
     if not client.is_user_authorized():
         dialog = xbmcgui.Dialog()
-        phone = dialog.input("Enter Telegram phone (+countrycode):")
+        phone = dialog.input(
+            "Enter Telegram phone number (+countrycode):",
+            type=xbmcgui.INPUT_ALPHANUM
+        )
+
+        if not phone:
+            raise Exception("Login cancelled by user")
+
         client.start(phone=phone)
+
         dialog.notification(
             "TeleBox",
             "Telegram login successful",
             xbmcgui.NOTIFICATION_INFO,
             4000
         )
-    else:
-        client.start()
+
 
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
