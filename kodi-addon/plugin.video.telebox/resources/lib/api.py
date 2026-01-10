@@ -1,5 +1,5 @@
 import asyncio
-from .ui import init_telegram_client
+from resources.lib.ui import init_telegram_client
 
 client = init_telegram_client()
 
