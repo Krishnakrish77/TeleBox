@@ -1,10 +1,8 @@
-# TeleBox - Telegram streaming Kodi addon
-# Single-file implementation (Baivaru-style)
-# Compatible with Kodi Matrix / Nexus / Omega
+# TeleBox - Telegram Kodi Addon (Single-file, stable version)
+# FIXED: Async issues removed, Telethon sync API used
 
 import sys
 import os
-import asyncio
 import urllib.parse
 
 import xbmc
@@ -13,7 +11,7 @@ import xbmcplugin
 import xbmcaddon
 
 # -------------------------------------------------------------------
-# ADDON PATHS & SETUP
+# ADDON PATHS
 # -------------------------------------------------------------------
 
 ADDON = xbmcaddon.Addon()
@@ -21,16 +19,15 @@ ADDON_ID = ADDON.getAddonInfo("id")
 ADDON_PATH = ADDON.getAddonInfo("path")
 PROFILE_PATH = ADDON.getAddonInfo("profile")
 
-# Ensure profile directory exists
 os.makedirs(PROFILE_PATH, exist_ok=True)
 
-# Add bundled libraries (Telethon) to Python path
+# Add bundled Telethon to path
 LIB_PATH = os.path.join(ADDON_PATH, "resources", "lib")
 if LIB_PATH not in sys.path:
     sys.path.insert(0, LIB_PATH)
 
 # -------------------------------------------------------------------
-# TELEGRAM SETUP
+# TELEGRAM SETUP (SYNC MODE)
 # -------------------------------------------------------------------
 
 from telethon import TelegramClient
@@ -44,84 +41,69 @@ client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
 def ensure_login():
     """
-    Ensures the user is logged into Telegram.
-    Prompts for phone number on first run.
+    Login safely using Telethon sync API.
     """
-    if not os.path.exists(SESSION_FILE):
+    if not client.is_connected():
+        client.connect()
+
+    if not client.is_user_authorized():
         dialog = xbmcgui.Dialog()
         phone = dialog.input("Enter Telegram phone (+countrycode):")
         client.start(phone=phone)
-        dialog.notification("TeleBox", "Telegram login successful", xbmcgui.NOTIFICATION_INFO, 4000)
+        dialog.notification(
+            "TeleBox",
+            "Telegram login successful",
+            xbmcgui.NOTIFICATION_INFO,
+            4000
+        )
     else:
-        client.connect()
-        if not client.is_user_authorized():
-            dialog = xbmcgui.Dialog()
-            phone = dialog.input("Session expired. Enter phone:")
-            client.start(phone=phone)
+        client.start()
 
 # -------------------------------------------------------------------
-# TELEGRAM DATA FUNCTIONS
+# TELEGRAM DATA (SYNC)
 # -------------------------------------------------------------------
 
-async def fetch_channels():
-    dialogs = await client.get_dialogs()
+def get_channels():
+    ensure_login()
+    dialogs = client.get_dialogs()
     return [d for d in dialogs if d.is_channel]
 
-async def fetch_groups():
-    dialogs = await client.get_dialogs()
+def get_groups():
+    ensure_login()
+    dialogs = client.get_dialogs()
     return [d for d in dialogs if d.is_group]
 
 # -------------------------------------------------------------------
-# KODI UI FUNCTIONS
+# KODI UI HELPERS
 # -------------------------------------------------------------------
 
 HANDLE = int(sys.argv[1])
 
-def add_dir(label, query):
-    """
-    Adds a directory item to Kodi UI
-    """
-    url = sys.argv[0] + "?" + urllib.parse.urlencode(query)
+def add_dir(label, params):
+    url = sys.argv[0] + "?" + urllib.parse.urlencode(params)
     li = xbmcgui.ListItem(label)
     li.setInfo("video", {"title": label})
     xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=True)
 
+# -------------------------------------------------------------------
+# SCREENS
+# -------------------------------------------------------------------
+
 def show_root():
-    """
-    Root menu
-    """
-    add_dir("📺 Channels", {"action": "channels"})
-    add_dir("👥 Groups", {"action": "groups"})
+    add_dir("Channels", {"action": "channels"})
+    add_dir("Groups", {"action": "groups"})
     xbmcplugin.endOfDirectory(HANDLE)
 
 def show_channels():
-    ensure_login()
-    channels = asyncio.run(fetch_channels())
-
-    for c in channels:
+    for c in get_channels():
         li = xbmcgui.ListItem(c.title)
-        xbmcplugin.addDirectoryItem(
-            HANDLE,
-            "",
-            li,
-            isFolder=False
-        )
-
+        xbmcplugin.addDirectoryItem(HANDLE, "", li, isFolder=False)
     xbmcplugin.endOfDirectory(HANDLE)
 
 def show_groups():
-    ensure_login()
-    groups = asyncio.run(fetch_groups())
-
-    for g in groups:
+    for g in get_groups():
         li = xbmcgui.ListItem(g.title)
-        xbmcplugin.addDirectoryItem(
-            HANDLE,
-            "",
-            li,
-            isFolder=False
-        )
-
+        xbmcplugin.addDirectoryItem(HANDLE, "", li, isFolder=False)
     xbmcplugin.endOfDirectory(HANDLE)
 
 # -------------------------------------------------------------------
@@ -130,7 +112,6 @@ def show_groups():
 
 def router(paramstring):
     params = dict(urllib.parse.parse_qsl(paramstring))
-
     action = params.get("action")
 
     if action == "channels":
