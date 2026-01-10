@@ -11,7 +11,7 @@
         <platform>all</platform>
         <language>en</language>
         <assets>
-          <icon>icon.png</icon>
+          <icon>logo.png</icon>
           <fanart>fanart.png</fanart>
         </assets>
     </extension>
