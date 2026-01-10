@@ -40,6 +40,9 @@ SESSION_FILE = os.path.join(PROFILE_PATH, "telebox.session")
 client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
 def ensure_login():
+    if not client.is_connected():
+        client.connect()
+
     if client.is_user_authorized():
         return
 
@@ -47,7 +50,6 @@ def ensure_login():
     if not phone:
         raise Exception("Login cancelled")
 
-    # Send OTP
     client.send_code_request(phone)
 
     code = kodi_input("Enter Telegram OTP")
@@ -59,6 +61,7 @@ def ensure_login():
     except Exception as e:
         xbmcgui.Dialog().ok("Login failed", str(e))
         raise
+
 
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
