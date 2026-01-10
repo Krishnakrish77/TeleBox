@@ -1,5 +1,9 @@
 import asyncio
-from resources.lib.ui import init_telegram_client
+from ui import init_telegram_client
+
+LIB_PATH = xbmc.translatePath("special://home/addons/plugin.video.telebox/resources/lib/")
+if LIB_PATH not in sys.path:
+    sys.path.insert(0, LIB_PATH)
 
 client = init_telegram_client()
 

@@ -1,7 +1,11 @@
 import xbmcplugin
 import xbmcgui
 import sys
-from resources.lib.api import get_channels, get_groups, get_messages
+from api import get_channels, get_groups, get_messages
+
+LIB_PATH = xbmc.translatePath("special://home/addons/plugin.video.telebox/resources/lib/")
+if LIB_PATH not in sys.path:
+    sys.path.insert(0, LIB_PATH)
 
 PLUGIN_HANDLE = int(sys.argv[1])
 
