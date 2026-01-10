@@ -40,32 +40,25 @@ SESSION_FILE = os.path.join(PROFILE_PATH, "telebox.session")
 client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
 def ensure_login():
-    """
-    Ensure Telegram login WITHOUT stdin.
-    Kodi-safe implementation.
-    """
-    if not client.is_connected():
-        client.connect()
+    if client.is_user_authorized():
+        return
 
-    if not client.is_user_authorized():
-        dialog = xbmcgui.Dialog()
-        phone = dialog.input(
-            "Enter Telegram phone number (+countrycode):",
-            type=xbmcgui.INPUT_ALPHANUM
-        )
+    phone = kodi_input("Enter your Telegram phone number (with country code)")
+    if not phone:
+        raise Exception("Login cancelled")
 
-        if not phone:
-            raise Exception("Login cancelled by user")
+    # Send OTP
+    client.send_code_request(phone)
 
-        client.start(phone=phone)
+    code = kodi_input("Enter Telegram OTP")
+    if not code:
+        raise Exception("OTP cancelled")
 
-        dialog.notification(
-            "TeleBox",
-            "Telegram login successful",
-            xbmcgui.NOTIFICATION_INFO,
-            4000
-        )
-
+    try:
+        client.sign_in(phone=phone, code=code)
+    except Exception as e:
+        xbmcgui.Dialog().ok("Login failed", str(e))
+        raise
 
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
