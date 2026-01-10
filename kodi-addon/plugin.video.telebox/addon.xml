@@ -9,8 +9,10 @@
         <summary>Stream from Telegram Channels and Groups</summary>
         <description>TeleBox lets you stream from your Telegram channels and groups directly in Kodi.</description>
         <platform>all</platform>
-        <icon>icon.png</icon>
-        <fanart>fanart.png</fanart>
         <language>en</language>
+        <assets>
+          <icon>icon.png</icon>
+          <fanart>fanart.png</fanart>
+        </assets>
     </extension>
 </addon>
