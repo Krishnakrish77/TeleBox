@@ -39,6 +39,19 @@ SESSION_FILE = os.path.join(PROFILE_PATH, "telebox.session")
 
 client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
+def kodi_input(heading, hidden=False):
+    """
+    Show a Kodi on-screen keyboard and return user input.
+    Returns None if cancelled.
+    """
+    keyboard = xbmcgui.Dialog()
+    result = keyboard.input(
+        heading,
+        type=xbmcgui.INPUT_ALPHANUM if not hidden else xbmcgui.INPUT_PASSWORD
+    )
+    return result.strip() if result else None
+
+
 def ensure_login():
     if not client.is_connected():
         client.connect()
@@ -61,7 +74,6 @@ def ensure_login():
     except Exception as e:
         xbmcgui.Dialog().ok("Login failed", str(e))
         raise
-
 
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
