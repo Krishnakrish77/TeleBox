@@ -1,29 +1,16 @@
-<addon id="plugin.video.telebox"
-       name="TeleBox"
-       version="0.1.0"
-       provider-name="You">
-
+<addon id="plugin.video.telebox" version="0.1.0" name="TeleBox" provider-name="YourName">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
-
-    <extension point="xbmc.python.pluginsource"
-               library="main.py">
+    <extension point="xbmc.python.pluginsource" library="resources/lib/router.py">
         <provides>video</provides>
     </extension>
-
     <extension point="xbmc.addon.metadata">
-        <summary>Stream Telegram media in Kodi</summary>
-        <description>
-            TeleBox allows you to browse and stream videos from your Telegram
-            channels and groups using a self-hosted bridge server.
-        </description>
+        <summary>Stream from Telegram Channels and Groups</summary>
+        <description>TeleBox lets you stream from your Telegram channels and groups directly in Kodi.</description>
         <platform>all</platform>
-
-        <assets>
-            <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
-        </assets>
+        <icon>icon.png</icon>
+        <fanart>fanart.jpg</fanart>
+        <language>en</language>
     </extension>
-
 </addon>

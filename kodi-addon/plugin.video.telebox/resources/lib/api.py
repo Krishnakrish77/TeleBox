@@ -1,20 +1,28 @@
-import xbmcaddon
-import requests
+import asyncio
+from ui import init_telegram_client
 
-addon = xbmcaddon.Addon()
-host = addon.getSetting("server_host")
-port = addon.getSetting("server_port")
+# Initialize client once per session
+client = init_telegram_client()
 
-BASE = f"http://{host}:{port}"
+async def list_channels():
+    dialogs = await client.get_dialogs()
+    channels = [d for d in dialogs if d.is_channel]
+    return [{"id": c.id, "name": c.name} for c in channels]
 
-def fetch_channels():
-    return requests.get(f"{BASE}/channels").json()
+async def list_groups():
+    dialogs = await client.get_dialogs()
+    groups = [d for d in dialogs if d.is_group]
+    return [{"id": g.id, "name": g.name} for g in groups]
 
-def fetch_groups():
-    return requests.get(f"{BASE}/groups").json()
+async def list_messages(chat_id, limit=50):
+    messages = await client.get_messages(chat_id, limit=limit)
+    return [{"id": m.id, "text": m.text, "media": m.media} for m in messages]
 
-def fetch_media(chat_id):
-    items = requests.get(f"{BASE}/list/{chat_id}").json()
-    for i in items:
-        i["stream_url"] = f"{BASE}/stream/{chat_id}/{i['id']}"
-    return items
+def get_channels():
+    return asyncio.run(list_channels())
+
+def get_groups():
+    return asyncio.run(list_groups())
+
+def get_messages(chat_id, limit=50):
+    return asyncio.run(list_messages(chat_id, limit))

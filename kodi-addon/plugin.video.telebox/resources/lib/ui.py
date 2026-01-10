@@ -1,15 +1,32 @@
+import os
+import xbmc
 import xbmcgui
-import xbmcplugin
+from telethon import TelegramClient
+from config import API_ID, API_HASH
 
-def add_item(handle, label, url, playable=False):
-    li = xbmcgui.ListItem(label=label)
+def init_telegram_client():
+    """
+    Initializes a TelegramClient for this Kodi user.
+    Prompts for phone/OTP on first-time login.
+    """
+    SESSION_DIR = xbmc.translatePath("special://profile/addon_data/plugin.video.telebox/")
+    os.makedirs(SESSION_DIR, exist_ok=True)
+    SESSION_FILE = os.path.join(SESSION_DIR, "telebox.session")
 
-    if playable:
-        li.setProperty("IsPlayable", "true")
+    client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
-    xbmcplugin.addDirectoryItem(
-        handle=handle,
-        url=url,
-        listitem=li,
-        isFolder=not playable
-    )
+    # First-time login
+    if not os.path.exists(SESSION_FILE):
+        dialog = xbmcgui.Dialog()
+        phone = dialog.input("Enter your Telegram phone number (+countrycode):")
+        client.start(phone=phone)
+        dialog.notification("TeleBox", "Telegram login successful!", xbmcgui.NOTIFICATION_INFO, 5000)
+
+    else:
+        client.connect()
+        if not client.is_user_authorized():
+            dialog = xbmcgui.Dialog()
+            phone = dialog.input("Session expired! Enter your Telegram phone:")
+            client.start(phone=phone)
+
+    return client
