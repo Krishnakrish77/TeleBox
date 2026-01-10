@@ -1,47 +1,148 @@
+# TeleBox - Telegram streaming Kodi addon
+# Single-file implementation (Baivaru-style)
+# Compatible with Kodi Matrix / Nexus / Omega
+
 import sys
+import os
+import asyncio
+import urllib.parse
+
+import xbmc
+import xbmcgui
 import xbmcplugin
-from resources.lib.router import get_params
-from resources.lib.ui import add_item
-from resources.lib.api import (
-    fetch_channels,
-    fetch_groups,
-    fetch_media
-)
+import xbmcaddon
 
-handle = int(sys.argv[1])
-params = get_params()
-action = params.get("action")
+# -------------------------------------------------------------------
+# ADDON PATHS & SETUP
+# -------------------------------------------------------------------
 
-if action is None:
-    add_item(handle, "📺 Channels",
-             "plugin://plugin.video.telebox/?action=channels")
-    add_item(handle, "👥 Groups",
-             "plugin://plugin.video.telebox/?action=groups")
+ADDON = xbmcaddon.Addon()
+ADDON_ID = ADDON.getAddonInfo("id")
+ADDON_PATH = ADDON.getAddonInfo("path")
+PROFILE_PATH = ADDON.getAddonInfo("profile")
 
-elif action == "channels":
-    for c in fetch_channels():
-        add_item(
-            handle,
-            c["name"],
-            f"plugin://plugin.video.telebox/?action=list&chat_id={c['id']}"
+# Ensure profile directory exists
+os.makedirs(PROFILE_PATH, exist_ok=True)
+
+# Add bundled libraries (Telethon) to Python path
+LIB_PATH = os.path.join(ADDON_PATH, "resources", "lib")
+if LIB_PATH not in sys.path:
+    sys.path.insert(0, LIB_PATH)
+
+# -------------------------------------------------------------------
+# TELEGRAM SETUP
+# -------------------------------------------------------------------
+
+from telethon import TelegramClient
+
+API_ID = int(ADDON.getSetting("api_id"))
+API_HASH = ADDON.getSetting("api_hash")
+
+SESSION_FILE = os.path.join(PROFILE_PATH, "telebox.session")
+
+client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
+
+def ensure_login():
+    """
+    Ensures the user is logged into Telegram.
+    Prompts for phone number on first run.
+    """
+    if not os.path.exists(SESSION_FILE):
+        dialog = xbmcgui.Dialog()
+        phone = dialog.input("Enter Telegram phone (+countrycode):")
+        client.start(phone=phone)
+        dialog.notification("TeleBox", "Telegram login successful", xbmcgui.NOTIFICATION_INFO, 4000)
+    else:
+        client.connect()
+        if not client.is_user_authorized():
+            dialog = xbmcgui.Dialog()
+            phone = dialog.input("Session expired. Enter phone:")
+            client.start(phone=phone)
+
+# -------------------------------------------------------------------
+# TELEGRAM DATA FUNCTIONS
+# -------------------------------------------------------------------
+
+async def fetch_channels():
+    dialogs = await client.get_dialogs()
+    return [d for d in dialogs if d.is_channel]
+
+async def fetch_groups():
+    dialogs = await client.get_dialogs()
+    return [d for d in dialogs if d.is_group]
+
+# -------------------------------------------------------------------
+# KODI UI FUNCTIONS
+# -------------------------------------------------------------------
+
+HANDLE = int(sys.argv[1])
+
+def add_dir(label, query):
+    """
+    Adds a directory item to Kodi UI
+    """
+    url = sys.argv[0] + "?" + urllib.parse.urlencode(query)
+    li = xbmcgui.ListItem(label)
+    li.setInfo("video", {"title": label})
+    xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=True)
+
+def show_root():
+    """
+    Root menu
+    """
+    add_dir("📺 Channels", {"action": "channels"})
+    add_dir("👥 Groups", {"action": "groups"})
+    xbmcplugin.endOfDirectory(HANDLE)
+
+def show_channels():
+    ensure_login()
+    channels = asyncio.run(fetch_channels())
+
+    for c in channels:
+        li = xbmcgui.ListItem(c.title)
+        xbmcplugin.addDirectoryItem(
+            HANDLE,
+            "",
+            li,
+            isFolder=False
         )
 
-elif action == "groups":
-    for g in fetch_groups():
-        add_item(
-            handle,
-            g["name"],
-            f"plugin://plugin.video.telebox/?action=list&chat_id={g['id']}"
+    xbmcplugin.endOfDirectory(HANDLE)
+
+def show_groups():
+    ensure_login()
+    groups = asyncio.run(fetch_groups())
+
+    for g in groups:
+        li = xbmcgui.ListItem(g.title)
+        xbmcplugin.addDirectoryItem(
+            HANDLE,
+            "",
+            li,
+            isFolder=False
         )
 
-elif action == "list":
-    chat_id = params["chat_id"]
-    for m in fetch_media(chat_id):
-        add_item(
-            handle,
-            m["name"],
-            m["stream_url"],
-            playable=True
-        )
+    xbmcplugin.endOfDirectory(HANDLE)
 
-xbmcplugin.endOfDirectory(handle)
+# -------------------------------------------------------------------
+# ROUTER
+# -------------------------------------------------------------------
+
+def router(paramstring):
+    params = dict(urllib.parse.parse_qsl(paramstring))
+
+    action = params.get("action")
+
+    if action == "channels":
+        show_channels()
+    elif action == "groups":
+        show_groups()
+    else:
+        show_root()
+
+# -------------------------------------------------------------------
+# ENTRY POINT
+# -------------------------------------------------------------------
+
+if __name__ == "__main__":
+    router(sys.argv[2][1:])

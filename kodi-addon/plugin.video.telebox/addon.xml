@@ -2,13 +2,13 @@
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
-    <extension point="xbmc.python.pluginsource" library="resources/lib/router.py">
+    <extension point="xbmc.python.pluginsource" library="main.py">
         <provides>video</provides>
     </extension>
     <extension point="xbmc.addon.metadata">
         <summary>Stream from Telegram Channels and Groups</summary>
         <description>TeleBox lets you stream from your Telegram channels and groups directly in Kodi.</description>
-        <platform>all</platform>
+        <platform>linux</platform>
         <language>en</language>
         <assets>
           <icon>logo.png</icon>
