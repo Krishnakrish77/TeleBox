@@ -1,3 +1,4 @@
+import xbmc
 import asyncio
 from ui import init_telegram_client
 

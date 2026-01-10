@@ -1,3 +1,4 @@
+import xbmc
 import xbmcplugin
 import xbmcgui
 import sys
