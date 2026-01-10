@@ -31,6 +31,7 @@ if LIB_PATH not in sys.path:
 # -------------------------------------------------------------------
 
 from telethon.sync  import TelegramClient
+from telethon.errors import SessionPasswordNeededError
 
 API_ID = int(ADDON.getSetting("api_id"))
 API_HASH = ADDON.getSetting("api_hash")
@@ -53,27 +54,28 @@ def kodi_input(heading, hidden=False):
 
 
 def ensure_login():
-    if not client.is_connected():
-        client.connect()
-
     if client.is_user_authorized():
         return
 
     phone = kodi_input("Enter your Telegram phone number (with country code)")
     if not phone:
-        raise Exception("Login cancelled")
+        raise Exception("Phone number required")
 
     client.send_code_request(phone)
 
-    code = kodi_input("Enter Telegram OTP")
+    code = kodi_input("Enter the OTP sent to Telegram")
     if not code:
-        raise Exception("OTP cancelled")
+        raise Exception("OTP required")
 
     try:
         client.sign_in(phone=phone, code=code)
-    except Exception as e:
-        xbmcgui.Dialog().ok("Login failed", str(e))
-        raise
+
+    except SessionPasswordNeededError:
+        password = kodi_input("Enter your Telegram 2-step verification password", hidden=True)
+        if not password:
+            raise Exception("Password required for 2-step verification")
+
+        client.sign_in(password=password)
 
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
