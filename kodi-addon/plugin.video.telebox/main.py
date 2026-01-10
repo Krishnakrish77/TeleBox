@@ -54,6 +54,9 @@ def kodi_input(heading, hidden=False):
 
 
 def ensure_login():
+    if not client.is_connected():
+        client.connect()
+        
     if client.is_user_authorized():
         return
 
