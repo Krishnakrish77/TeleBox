@@ -10,6 +10,9 @@ client = TelegramClient("telebox", API_ID, API_HASH)
 async def start():
     await client.start()
 
+async def stop():
+    await client.disconnect();
+
 async def get_channels_and_groups():
     channels, groups = [], []
 

@@ -15,6 +15,10 @@ app = FastAPI()
 async def startup():
     await start()
 
+@app.on_event("shutdown")
+async def shutdown():
+    await stop();
+
 @app.get("/channels")
 async def channels():
     channels, _ = await get_channels_and_groups()
