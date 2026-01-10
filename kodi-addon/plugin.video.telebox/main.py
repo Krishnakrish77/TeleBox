@@ -30,7 +30,7 @@ if LIB_PATH not in sys.path:
 # TELEGRAM SETUP (SYNC MODE)
 # -------------------------------------------------------------------
 
-from telethon.syncUse  import TelegramClient
+from telethon.sync  import TelegramClient
 
 API_ID = int(ADDON.getSetting("api_id"))
 API_HASH = ADDON.getSetting("api_hash")
