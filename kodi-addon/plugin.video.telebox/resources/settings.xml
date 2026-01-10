@@ -1,3 +1,5 @@
 <settings>
+    <setting id="api_id" type="number" label="Telegram API ID" default="1234567"/>
+    <setting id="api_hash" type="text" label="Telegram API HASH" default="abcdef1234567890abcdef1234567890"/>
     <setting id="max_messages" type="number" label="Max Messages per Chat" default="50"/>
 </settings>

@@ -1,7 +1,7 @@
 import xbmcplugin
 import xbmcgui
 import sys
-from api import get_channels, get_groups, get_messages
+from .api import get_channels, get_groups, get_messages
 
 PLUGIN_HANDLE = int(sys.argv[1])
 

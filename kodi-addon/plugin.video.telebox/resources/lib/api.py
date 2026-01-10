@@ -1,7 +1,6 @@
 import asyncio
-from ui import init_telegram_client
+from .ui import init_telegram_client
 
-# Initialize client once per session
 client = init_telegram_client()
 
 async def list_channels():
