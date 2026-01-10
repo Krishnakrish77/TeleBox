@@ -31,7 +31,10 @@ if LIB_PATH not in sys.path:
 # -------------------------------------------------------------------
 
 from telethon.sync  import TelegramClient
-from telethon.errors import SessionPasswordNeededError
+from telethon.errors import (
+    SessionPasswordNeededError,
+    PasswordHashInvalidError
+)
 
 API_ID = int(ADDON.getSetting("api_id"))
 API_HASH = ADDON.getSetting("api_hash")
@@ -53,32 +56,64 @@ def kodi_input(heading, hidden=False):
     return result.strip() if result else None
 
 
+def notify(msg):
+    xbmcgui.Dialog().notification(
+        "TeleBox",
+        msg,
+        xbmcgui.NOTIFICATION_ERROR,
+        4000
+    )
+
 def ensure_login():
     if not client.is_connected():
         client.connect()
-        
+
     if client.is_user_authorized():
         return
 
-    phone = kodi_input("Enter your Telegram phone number (with country code)")
+    dialog = xbmcgui.Dialog()
+
+    phone = dialog.input(
+        "Enter your Telegram phone number (with country code)",
+        type=xbmcgui.INPUT_ALPHANUM
+    )
     if not phone:
-        raise Exception("Phone number required")
+        notify("Login cancelled")
+        return
 
     client.send_code_request(phone)
 
-    code = kodi_input("Enter the OTP sent to Telegram")
+    code = dialog.input(
+        "Enter the OTP sent to Telegram",
+        type=xbmcgui.INPUT_NUMERIC
+    )
     if not code:
-        raise Exception("OTP required")
+        notify("OTP required")
+        return
 
     try:
         client.sign_in(phone=phone, code=code)
 
     except SessionPasswordNeededError:
-        password = kodi_input("Enter your Telegram 2-step verification password", hidden=True)
-        if not password:
-            raise Exception("Password required for 2-step verification")
+        for attempt in range(3):
+            password = dialog.input(
+                f"2FA is enabled. Enter your password (attempt {attempt+1}/3)",
+                option=xbmcgui.ALPHANUM_HIDE_INPUT
+            )
 
-        client.sign_in(password=password)
+            if not password:
+                notify("Login cancelled")
+                return
+
+            try:
+                client.sign_in(password=password)
+                return  # ✅ SUCCESS
+
+            except PasswordHashInvalidError:
+                notify("Incorrect password")
+
+        notify("Too many failed attempts")
+        return
 
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
