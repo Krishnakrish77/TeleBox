@@ -1,11 +1,10 @@
 # TeleBox - Telegram Kodi Addon (Single-file, stable version)
 # FIXED: Async issues removed, Telethon sync API used
 
-import sys
 import os
+import sys
 import urllib.parse
 
-import xbmc
 import xbmcgui
 import xbmcplugin
 import xbmcaddon
@@ -30,30 +29,23 @@ if LIB_PATH not in sys.path:
 # TELEGRAM SETUP (SYNC MODE)
 # -------------------------------------------------------------------
 
-from telethon.sync  import TelegramClient
-from telethon.errors import (
-    SessionPasswordNeededError,
-    PasswordHashInvalidError
-)
+from telethon.sync import TelegramClient
+from telethon.errors import SessionPasswordNeededError, PasswordHashInvalidError
 
-API_ID = int(ADDON.getSetting("api_id"))
+API_ID = int(ADDON.getSetting("api_id") or "0")
 API_HASH = ADDON.getSetting("api_hash")
+MAX_MESSAGES = int(ADDON.getSetting("max_messages") or "50")
 
 SESSION_FILE = os.path.join(PROFILE_PATH, "telebox.session")
+CACHE_PATH = os.path.join(PROFILE_PATH, "cache")
+os.makedirs(CACHE_PATH, exist_ok=True)
+
+SUPPORTED_FILE_EXTENSIONS = (
+    ".mp4", ".mkv", ".avi", ".mov", ".webm",
+    ".mp3", ".aac", ".m4a", ".wav", ".flac", ".ogg"
+)
 
 client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
-
-def kodi_input(heading, hidden=False):
-    """
-    Show a Kodi on-screen keyboard and return user input.
-    Returns None if cancelled.
-    """
-    keyboard = xbmcgui.Dialog()
-    result = keyboard.input(
-        heading,
-        type=xbmcgui.INPUT_ALPHANUM if not hidden else xbmcgui.INPUT_PASSWORD
-    )
-    return result.strip() if result else None
 
 
 def notify(msg):
@@ -64,12 +56,13 @@ def notify(msg):
         4000
     )
 
+
 def ensure_login():
     if not client.is_connected():
         client.connect()
 
     if client.is_user_authorized():
-        return
+        return True
 
     dialog = xbmcgui.Dialog()
 
@@ -79,7 +72,7 @@ def ensure_login():
     )
     if not phone:
         notify("Login cancelled")
-        return
+        return False
 
     client.send_code_request(phone)
 
@@ -89,45 +82,106 @@ def ensure_login():
     )
     if not code:
         notify("OTP required")
-        return
+        return False
 
     try:
         client.sign_in(phone=phone, code=code)
+        return True
 
     except SessionPasswordNeededError:
         for attempt in range(3):
             password = dialog.input(
-                f"2FA is enabled. Enter your password (attempt {attempt+1}/3)",
+                "2FA is enabled. Enter your password (attempt {0}/3)".format(attempt + 1),
                 option=xbmcgui.ALPHANUM_HIDE_INPUT
             )
 
             if not password:
                 notify("Login cancelled")
-                return
+                return False
 
             try:
                 client.sign_in(password=password)
-                return  # ✅ SUCCESS
-
+                return True
             except PasswordHashInvalidError:
                 notify("Incorrect password")
 
         notify("Too many failed attempts")
-        return
+        return False
+
+    return client.is_user_authorized()
+
 
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
 # -------------------------------------------------------------------
 
 def get_channels():
-    ensure_login()
+    if not ensure_login():
+        return []
     dialogs = client.get_dialogs()
     return [d for d in dialogs if d.is_channel]
 
+
 def get_groups():
-    ensure_login()
+    if not ensure_login():
+        return []
     dialogs = client.get_dialogs()
     return [d for d in dialogs if d.is_group]
+
+
+def is_supported_media(msg):
+    if not msg or not msg.file:
+        return False
+
+    if msg.video or msg.audio or msg.voice:
+        return True
+
+    if not msg.document:
+        return False
+
+    file_name = (msg.file.name or "").lower()
+    if file_name.endswith(SUPPORTED_FILE_EXTENSIONS):
+        return True
+
+    mime_type = (getattr(msg.file, "mime_type", "") or "").lower()
+    return mime_type.startswith("video/") or mime_type.startswith("audio/")
+
+
+def get_media(chat_id, limit):
+    if not ensure_login():
+        return []
+
+    media = []
+    for msg in client.iter_messages(chat_id, limit=limit):
+        if not is_supported_media(msg):
+            continue
+
+        name = msg.file.name if msg.file and msg.file.name else "media_{0}".format(msg.id)
+        media.append({"id": msg.id, "name": name})
+
+    return media
+
+
+def play_media(chat_id, msg_id):
+    if not ensure_login():
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+
+    message = client.get_messages(chat_id, ids=msg_id)
+    if not message or not message.file:
+        notify("Media not found")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+
+    file_name = message.file.name or "media_{0}".format(msg_id)
+    target_path = os.path.join(CACHE_PATH, "{0}_{1}_{2}".format(chat_id, msg_id, file_name))
+
+    if not os.path.exists(target_path):
+        client.download_media(message, file=target_path)
+
+    list_item = xbmcgui.ListItem(path=target_path)
+    xbmcplugin.setResolvedUrl(HANDLE, True, list_item)
+
 
 # -------------------------------------------------------------------
 # KODI UI HELPERS
@@ -135,11 +189,13 @@ def get_groups():
 
 HANDLE = int(sys.argv[1])
 
+
 def add_dir(label, params):
     url = sys.argv[0] + "?" + urllib.parse.urlencode(params)
     li = xbmcgui.ListItem(label)
     li.setInfo("video", {"title": label})
     xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=True)
+
 
 # -------------------------------------------------------------------
 # SCREENS
@@ -150,17 +206,30 @@ def show_root():
     add_dir("Groups", {"action": "groups"})
     xbmcplugin.endOfDirectory(HANDLE)
 
+
 def show_channels():
-    for c in get_channels():
-        li = xbmcgui.ListItem(c.title)
-        xbmcplugin.addDirectoryItem(HANDLE, "", li, isFolder=False)
+    for channel in get_channels():
+        add_dir(channel.title, {"action": "media", "chat_id": channel.id})
     xbmcplugin.endOfDirectory(HANDLE)
 
+
 def show_groups():
-    for g in get_groups():
-        li = xbmcgui.ListItem(g.title)
-        xbmcplugin.addDirectoryItem(HANDLE, "", li, isFolder=False)
+    for group in get_groups():
+        add_dir(group.title, {"action": "media", "chat_id": group.id})
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def show_media(chat_id):
+    for item in get_media(chat_id, MAX_MESSAGES):
+        url = sys.argv[0] + "?" + urllib.parse.urlencode(
+            {"action": "play", "chat_id": chat_id, "msg_id": item["id"]}
+        )
+        li = xbmcgui.ListItem(item["name"])
+        li.setInfo("video", {"title": item["name"]})
+        li.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
+    xbmcplugin.endOfDirectory(HANDLE)
+
 
 # -------------------------------------------------------------------
 # ROUTER
@@ -174,8 +243,13 @@ def router(paramstring):
         show_channels()
     elif action == "groups":
         show_groups()
+    elif action == "media":
+        show_media(int(params.get("chat_id", "0")))
+    elif action == "play":
+        play_media(int(params.get("chat_id", "0")), int(params.get("msg_id", "0")))
     else:
         show_root()
+
 
 # -------------------------------------------------------------------
 # ENTRY POINT
