@@ -130,9 +130,6 @@ def ensure_login():
         notify("Login failed")
         return False
 
-    return client.is_user_authorized()
-
-
 # -------------------------------------------------------------------
 # TELEGRAM DATA (SYNC)
 # -------------------------------------------------------------------
@@ -174,12 +171,16 @@ def get_media(chat_id, limit):
         return []
 
     media = []
-    for msg in client.iter_messages(chat_id, limit=limit):
-        if not is_supported_media(msg):
-            continue
+    try:
+        for msg in client.iter_messages(chat_id, limit=limit):
+            if not is_supported_media(msg):
+                continue
 
-        name = msg.file.name if msg.file and msg.file.name else "media_{0}".format(msg.id)
-        media.append({"id": msg.id, "name": name})
+            name = msg.file.name if msg.file and msg.file.name else "media_{0}".format(msg.id)
+            media.append({"id": msg.id, "name": name})
+    except Exception:
+        notify("Failed to load chat media")
+        return []
 
     return media
 
@@ -189,7 +190,13 @@ def play_media(chat_id, msg_id):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 
-    message = client.get_messages(chat_id, ids=msg_id)
+    try:
+        message = client.get_messages(chat_id, ids=msg_id)
+    except Exception:
+        notify("Failed to load media")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+
     if not message or not message.file:
         notify("Media not found")
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
