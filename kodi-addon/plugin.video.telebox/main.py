@@ -32,9 +32,17 @@ if LIB_PATH not in sys.path:
 from telethon.sync import TelegramClient
 from telethon.errors import SessionPasswordNeededError, PasswordHashInvalidError
 
-API_ID = int(ADDON.getSetting("api_id") or "0")
+
+def safe_int(value, default):
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+API_ID = safe_int(ADDON.getSetting("api_id"), 0)
 API_HASH = ADDON.getSetting("api_hash")
-MAX_MESSAGES = int(ADDON.getSetting("max_messages") or "50")
+MAX_MESSAGES = max(1, safe_int(ADDON.getSetting("max_messages"), 50))
 
 SESSION_FILE = os.path.join(PROFILE_PATH, "telebox.session")
 CACHE_PATH = os.path.join(PROFILE_PATH, "cache")
@@ -59,7 +67,11 @@ def notify(msg):
 
 def ensure_login():
     if not client.is_connected():
-        client.connect()
+        try:
+            client.connect()
+        except Exception:
+            notify("Telegram connection failed")
+            return False
 
     if client.is_user_authorized():
         return True
@@ -74,7 +86,11 @@ def ensure_login():
         notify("Login cancelled")
         return False
 
-    client.send_code_request(phone)
+    try:
+        client.send_code_request(phone)
+    except Exception:
+        notify("Failed to send login code")
+        return False
 
     code = dialog.input(
         "Enter the OTP sent to Telegram",
@@ -100,12 +116,18 @@ def ensure_login():
                 return False
 
             try:
-                client.sign_in(password=password)
+                client.sign_in(**{"password": password})
                 return True
             except PasswordHashInvalidError:
                 notify("Incorrect password")
+            except Exception:
+                notify("Login failed")
+                return False
 
         notify("Too many failed attempts")
+        return False
+    except Exception:
+        notify("Login failed")
         return False
 
     return client.is_user_authorized()
@@ -173,11 +195,21 @@ def play_media(chat_id, msg_id):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 
-    file_name = message.file.name or "media_{0}".format(msg_id)
+    file_name = sanitize_file_name(message.file.name, "media_{0}".format(msg_id))
     target_path = os.path.join(CACHE_PATH, "{0}_{1}_{2}".format(chat_id, msg_id, file_name))
 
     if not os.path.exists(target_path):
-        client.download_media(message, file=target_path)
+        try:
+            client.download_media(message, file=target_path)
+        except Exception:
+            notify("Failed to cache media")
+            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            return
+
+    if not os.path.exists(target_path):
+        notify("Failed to cache media")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
 
     list_item = xbmcgui.ListItem(path=target_path)
     xbmcplugin.setResolvedUrl(HANDLE, True, list_item)
@@ -188,6 +220,13 @@ def play_media(chat_id, msg_id):
 # -------------------------------------------------------------------
 
 HANDLE = int(sys.argv[1])
+
+
+def sanitize_file_name(file_name, fallback):
+    cleaned = (file_name or "").replace("\\", "/").split("/")[-1].strip()
+    if not cleaned:
+        cleaned = fallback
+    return "".join(ch if ch.isalnum() or ch in "._- ()" else "_" for ch in cleaned)
 
 
 def add_dir(label, params):
@@ -244,9 +283,20 @@ def router(paramstring):
     elif action == "groups":
         show_groups()
     elif action == "media":
-        show_media(int(params.get("chat_id", "0")))
+        chat_id = safe_int(params.get("chat_id"), None)
+        if chat_id is None:
+            notify("Invalid chat id")
+            show_root()
+            return
+        show_media(chat_id)
     elif action == "play":
-        play_media(int(params.get("chat_id", "0")), int(params.get("msg_id", "0")))
+        chat_id = safe_int(params.get("chat_id"), None)
+        msg_id = safe_int(params.get("msg_id"), None)
+        if chat_id is None or msg_id is None:
+            notify("Invalid playback parameters")
+            show_root()
+            return
+        play_media(chat_id, msg_id)
     else:
         show_root()
 
