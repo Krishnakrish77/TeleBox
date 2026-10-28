@@ -137,14 +137,22 @@ def ensure_login():
 def get_channels():
     if not ensure_login():
         return []
-    dialogs = client.get_dialogs()
+    try:
+        dialogs = client.get_dialogs()
+    except Exception:
+        notify("Failed to load chats")
+        return []
     return [d for d in dialogs if d.is_channel]
 
 
 def get_groups():
     if not ensure_login():
         return []
-    dialogs = client.get_dialogs()
+    try:
+        dialogs = client.get_dialogs()
+    except Exception:
+        notify("Failed to load chats")
+        return []
     return [d for d in dialogs if d.is_group]
 
 
