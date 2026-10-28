@@ -4,6 +4,7 @@
 import os
 import sys
 import urllib.parse
+import mimetypes
 
 import xbmcgui
 import xbmcplugin
@@ -43,6 +44,7 @@ def safe_int(value, default):
 API_ID = safe_int(ADDON.getSetting("api_id"), 0)
 API_HASH = ADDON.getSetting("api_hash")
 MAX_MESSAGES = max(1, safe_int(ADDON.getSetting("max_messages"), 50))
+MAX_CACHE_FILES = max(1, safe_int(ADDON.getSetting("max_cache_files"), 200))
 
 SESSION_FILE = os.path.join(PROFILE_PATH, "telebox.session")
 CACHE_PATH = os.path.join(PROFILE_PATH, "cache")
@@ -174,6 +176,81 @@ def is_supported_media(msg):
     return mime_type.startswith("video/") or mime_type.startswith("audio/")
 
 
+def infer_media_extension(msg):
+    if not msg or not msg.file:
+        return ""
+
+    ext = (getattr(msg.file, "ext", "") or "").strip().lower()
+    if ext and not ext.startswith("."):
+        ext = ".{0}".format(ext)
+    if ext:
+        return ext
+
+    mime_type = (getattr(msg.file, "mime_type", "") or "").split(";", 1)[0].strip().lower()
+    guessed = (mimetypes.guess_extension(mime_type) or "").lower() if mime_type else ""
+    if guessed == ".oga":
+        return ".ogg"
+    if guessed == ".mpga":
+        return ".mp3"
+    return guessed
+
+
+def build_media_file_name(msg, msg_id):
+    fallback = "media_{0}".format(msg_id)
+    ext = infer_media_extension(msg)
+    if ext:
+        fallback = "{0}{1}".format(fallback, ext)
+
+    file_name = msg.file.name if msg and msg.file and msg.file.name else ""
+    sanitized = sanitize_file_name(file_name, fallback)
+    if ext and not os.path.splitext(sanitized)[1]:
+        sanitized = "{0}{1}".format(sanitized, ext)
+    return sanitized
+
+
+def is_valid_cached_media(msg, path):
+    if not os.path.exists(path):
+        return False
+
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return False
+
+    if size <= 0:
+        return False
+
+    expected_size = getattr(msg.file, "size", None) if msg and msg.file else None
+    if expected_size is None:
+        return True
+
+    try:
+        return size == int(expected_size)
+    except (TypeError, ValueError):
+        return True
+
+
+def prune_cache(max_files):
+    try:
+        entries = []
+        for name in os.listdir(CACHE_PATH):
+            path = os.path.join(CACHE_PATH, name)
+            if os.path.isfile(path):
+                entries.append((os.path.getmtime(path), path))
+    except OSError:
+        return
+
+    if len(entries) <= max_files:
+        return
+
+    entries.sort(reverse=True)
+    for _, path in entries[max_files:]:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def get_media(chat_id, limit):
     if not ensure_login():
         return []
@@ -184,8 +261,7 @@ def get_media(chat_id, limit):
             if not is_supported_media(msg):
                 continue
 
-            name = msg.file.name if msg.file and msg.file.name else "media_{0}".format(msg.id)
-            media.append({"id": msg.id, "name": name})
+            media.append({"id": msg.id, "name": build_media_file_name(msg, msg.id)})
     except Exception:
         notify("Failed to load chat media")
         return []
@@ -210,10 +286,15 @@ def play_media(chat_id, msg_id):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 
-    file_name = sanitize_file_name(message.file.name, "media_{0}".format(msg_id))
+    file_name = build_media_file_name(message, msg_id)
     target_path = os.path.join(CACHE_PATH, "{0}_{1}_{2}".format(chat_id, msg_id, file_name))
 
-    if not os.path.exists(target_path):
+    if not is_valid_cached_media(message, target_path):
+        if os.path.exists(target_path):
+            try:
+                os.remove(target_path)
+            except OSError:
+                pass
         try:
             client.download_media(message, file=target_path)
         except Exception:
@@ -221,10 +302,21 @@ def play_media(chat_id, msg_id):
             xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
             return
 
-    if not os.path.exists(target_path):
+    if not is_valid_cached_media(message, target_path):
+        if os.path.exists(target_path):
+            try:
+                os.remove(target_path)
+            except OSError:
+                pass
         notify("Failed to cache media")
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
+
+    try:
+        os.utime(target_path, None)
+    except OSError:
+        pass
+    prune_cache(MAX_CACHE_FILES)
 
     list_item = xbmcgui.ListItem(path=target_path)
     xbmcplugin.setResolvedUrl(HANDLE, True, list_item)
